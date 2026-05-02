@@ -17,10 +17,28 @@ const LoadingAnimation = () => {
   const targetProgressRef = useRef(0);
   const lastFrameRef = useRef(0);
   const lastOpacityRef = useRef(0);
+  const imageCache = useRef(new Map());
 
   const fullText = 'WELCOME to FREYA';
 
-  // Typing animation
+  // Prevent body scroll and cleanup on unmount
+  useEffect(() => {
+    // Prevent body scroll
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    document.body.style.height = '100%';
+
+    return () => {
+      // Restore body scroll on unmount
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.height = '';
+    };
+  }, []);
+
+  // Typing animation - faster and no delay
   useEffect(() => {
     if (!showIntro) return;
 
@@ -31,47 +49,72 @@ const LoadingAnimation = () => {
         currentIndex++;
       } else {
         clearInterval(typingInterval);
-        // Immediately hide intro - no wait
-        setShowIntro(false);
+        // Immediately hide intro after typing completes
+        setTimeout(() => setShowIntro(false), 100);
       }
-    }, 30);
+    }, 50); // Faster typing speed
 
     return () => clearInterval(typingInterval);
   }, [showIntro]);
 
-  // Preload all images with error handling
+  // Preload all images with error handling and caching
   useEffect(() => {
     let loaded = 0;
     let failed = 0;
+    const loadPromises = [];
 
     for (let i = 0; i < totalFrames; i++) {
-      const img = new Image();
-      img.onload = () => {
-        loaded++;
-        setLoadedCount(loaded);
-        if (loaded + failed === totalFrames) {
-          setImagesLoaded(true);
-        }
-      };
-      img.onerror = () => {
-        failed++;
-        console.warn(`Failed to load frame ${i}`);
-        if (loaded + failed === totalFrames) {
-          setImagesLoaded(true);
-        }
-      };
-      img.src = `/animations/animate_in_cinamtic_style_202605021652_${String(i).padStart(3, '0')}.png`;
+      const promise = new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          loaded++;
+          imageCache.current.set(i, img);
+          setLoadedCount(loaded);
+          if (loaded + failed === totalFrames) {
+            setImagesLoaded(true);
+          }
+          resolve();
+        };
+        img.onerror = () => {
+          failed++;
+          console.warn(`Failed to load frame ${i}`);
+          if (loaded + failed === totalFrames) {
+            setImagesLoaded(true);
+          }
+          resolve();
+        };
+        img.src = `/animations/animate_in_cinamtic_style_202605021652_${String(i).padStart(3, '0')}.png`;
+      });
+      loadPromises.push(promise);
     }
+
+    return () => {
+      // Cleanup image cache on unmount
+      imageCache.current.clear();
+    };
   }, []);
 
-  // Smooth animation loop - simplified for stability
+  // Smooth animation loop - optimized for stability
   useEffect(() => {
     if (!imagesLoaded || showIntro) return;
 
-    const animate = () => {
-      // Calculate velocity for smooth momentum
+    let isActive = true;
+    let lastUpdateTime = 0;
+    const updateInterval = 1000 / 60; // 60 FPS cap
+
+    const animate = (currentTime) => {
+      if (!isActive) return;
+
+      // Throttle updates to 60 FPS
+      if (currentTime - lastUpdateTime < updateInterval) {
+        animationFrameRef.current = requestAnimationFrame(animate);
+        return;
+      }
+      lastUpdateTime = currentTime;
+
+      // Calculate velocity for smooth momentum with better easing
       const diff = targetProgressRef.current - frameProgressRef.current;
-      frameProgressRef.current += diff * 0.1;
+      frameProgressRef.current += diff * 0.15; // Slightly faster response
 
       // Clamp to valid range
       frameProgressRef.current = Math.max(0, Math.min(totalFrames - 1, frameProgressRef.current));
@@ -97,21 +140,39 @@ const LoadingAnimation = () => {
     animationFrameRef.current = requestAnimationFrame(animate);
 
     return () => {
+      isActive = false;
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
     };
-  }, [imagesLoaded, showIntro]);
+  }, [imagesLoaded, showIntro, frameState.showButton]);
 
-  // Handle scroll and touch - simplified
+  // Handle scroll and touch - improved stability
   useEffect(() => {
     if (!imagesLoaded || showIntro) return;
 
     let touchStartY = 0;
+    let isScrolling = false;
+    let scrollTimeout = null;
 
     const handleWheel = (e) => {
       e.preventDefault();
-      targetProgressRef.current += e.deltaY * 0.008;
+      e.stopPropagation();
+      
+      // Debounce rapid scroll events
+      if (!isScrolling) {
+        isScrolling = true;
+      }
+      
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        isScrolling = false;
+      }, 50);
+
+      // Smoother scroll with better delta handling
+      const delta = e.deltaY * 0.01;
+      targetProgressRef.current += delta;
       targetProgressRef.current = Math.max(0, Math.min(totalFrames - 1, targetProgressRef.current));
     };
 
@@ -121,31 +182,49 @@ const LoadingAnimation = () => {
 
     const handleTouchMove = (e) => {
       e.preventDefault();
+      e.stopPropagation();
+      
       const touchEndY = e.touches[0].clientY;
       const swipeDistance = touchStartY - touchEndY;
-      targetProgressRef.current += swipeDistance * 0.015;
+      targetProgressRef.current += swipeDistance * 0.02;
       targetProgressRef.current = Math.max(0, Math.min(totalFrames - 1, targetProgressRef.current));
       touchStartY = touchEndY;
     };
 
     const container = containerRef.current;
     if (container) {
-      container.addEventListener('wheel', handleWheel, { passive: false });
+      // Use capture phase to ensure we catch events first
+      container.addEventListener('wheel', handleWheel, { passive: false, capture: true });
       container.addEventListener('touchstart', handleTouchStart, { passive: true });
-      container.addEventListener('touchmove', handleTouchMove, { passive: false });
+      container.addEventListener('touchmove', handleTouchMove, { passive: false, capture: true });
       
       return () => {
-        container.removeEventListener('wheel', handleWheel);
+        clearTimeout(scrollTimeout);
+        container.removeEventListener('wheel', handleWheel, { capture: true });
         container.removeEventListener('touchstart', handleTouchStart);
-        container.removeEventListener('touchmove', handleTouchMove);
+        container.removeEventListener('touchmove', handleTouchMove, { capture: true });
       };
     }
   }, [imagesLoaded, showIntro]);
 
   return (
     <div className="animation-container" ref={containerRef}>
+      {/* Loading Indicator */}
+      {!imagesLoaded && (
+        <div className="loading-indicator">
+          <div className="loading-spinner"></div>
+          <p className="loading-text">Loading Experience...</p>
+          <div className="loading-progress">
+            <div 
+              className="loading-progress-bar" 
+              style={{ width: `${(loadedCount / totalFrames) * 100}%` }}
+            ></div>
+          </div>
+        </div>
+      )}
+
       {/* Intro with Typing Animation */}
-      {showIntro && (
+      {showIntro && imagesLoaded && (
         <div className="intro-overlay">
           {/* Falling particles */}
           <div className="intro-particles">
@@ -171,6 +250,34 @@ const LoadingAnimation = () => {
 
       {/* Main content */}
       <div className={`content-wrapper ${imagesLoaded && !showIntro ? 'loaded' : ''}`}>
+        {/* Background */}
+        <div className="bg-container">
+          <div className="bg-gradient"></div>
+          <div className="bg-grid"></div>
+        </div>
+
+        {/* Floating particles */}
+        <div className="particles-container">
+          {Array.from({ length: 20 }, (_, i) => (
+            <div
+              key={`particle-${i}`}
+              className="particle"
+              style={{
+                left: `${Math.random() * 100}%`,
+                animationDelay: `${Math.random() * 3}s`,
+                animationDuration: `${3 + Math.random() * 4}s`,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Light streaks */}
+        <div className="light-streaks">
+          <div className="streak streak-1"></div>
+          <div className="streak streak-2"></div>
+          <div className="streak streak-3"></div>
+        </div>
+
         {/* Image display with smooth blending */}
         <div className="image-container">
           {/* Current frame */}
@@ -214,8 +321,7 @@ const LoadingAnimation = () => {
         {/* Button overlay */}
         <div className={`button-overlay ${frameState.showButton ? 'show' : ''}`}>
           <div className="button-wrapper">
-            <h1 className="brand-title">FREYA</h1>
-            <p className="brand-subtitle">AI-Powered Collaborative Code Editor</p>
+          
             <button 
               className="cta-button"
               onClick={() => navigate('/home')}
