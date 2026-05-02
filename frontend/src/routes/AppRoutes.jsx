@@ -4,6 +4,7 @@ import Login from '../screens/Login'
 import Register from '../screens/Register'
 import Home from '../screens/Home'
 import Project from '../screens/Project'
+import LoadingAnimation from '../screens/LoadingAnimation'
 import UserAuth from "../auth/UserAuth"
 function AppRoutes() {
  
@@ -12,7 +13,10 @@ function AppRoutes() {
    <BrowserRouter>
     <Routes>
         <Route
-        path='/'element=
+        path='/'element={<LoadingAnimation/>}
+        />
+        <Route
+        path='/home'element=
         {<UserAuth><Home/></UserAuth>}
         
         />
