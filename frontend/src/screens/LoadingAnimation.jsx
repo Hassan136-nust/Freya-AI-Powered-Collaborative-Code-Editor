@@ -6,19 +6,19 @@ const LoadingAnimation = () => {
   const containerRef = useRef(null);
   const [imagesLoaded, setImagesLoaded] = useState(false);
   const [loadedCount, setLoadedCount] = useState(0);
-  const [frameState, setFrameState] = useState({ frame: 8, nextFrame: 8, opacity: 0, showButton: false });
+  const [frameState, setFrameState] = useState({ frame: 0, nextFrame: 0, opacity: 0, showButton: false });
   const [showIntro, setShowIntro] = useState(true);
   const [displayedText, setDisplayedText] = useState('');
   const navigate = useNavigate();
 
-  const totalFrames = 8;
+  const totalFrames = 82; // Updated to 82 frames
   const frameProgressRef = useRef(0);
   const animationFrameRef = useRef(null);
   const targetProgressRef = useRef(0);
-  const lastFrameRef = useRef(8);
+  const lastFrameRef = useRef(0);
   const lastOpacityRef = useRef(0);
 
-  const fullText = 'WELCOME to FREYA\nAI Powered Coding Agent\nStart Coding Now';
+  const fullText = 'WELCOME to FREYA';
 
   // Typing animation
   useEffect(() => {
@@ -31,10 +31,10 @@ const LoadingAnimation = () => {
         currentIndex++;
       } else {
         clearInterval(typingInterval);
-        // Wait 2 seconds then hide intro
-        setTimeout(() => setShowIntro(false), 2000);
+        // Wait 0.5 seconds then hide intro
+        setTimeout(() => setShowIntro(false), 500);
       }
-    }, 50);
+    }, 30);
 
     return () => clearInterval(typingInterval);
   }, [showIntro]);
@@ -43,7 +43,7 @@ const LoadingAnimation = () => {
   useEffect(() => {
     let loaded = 0;
 
-    for (let i = 1; i <= totalFrames; i++) {
+    for (let i = 0; i < totalFrames; i++) {
       const img = new Image();
       img.onload = () => {
         loaded++;
@@ -52,7 +52,7 @@ const LoadingAnimation = () => {
           setImagesLoaded(true);
         }
       };
-      img.src = `/animations/frame_${String(i).padStart(4, '0')}.png`;
+      img.src = `/animations/animate_in_cinamtic_style_202605021652_${String(i).padStart(3, '0')}.png`;
     }
   }, []);
 
@@ -69,10 +69,10 @@ const LoadingAnimation = () => {
       const floorFrame = Math.floor(frameProgressRef.current);
       const blendAmount = frameProgressRef.current - floorFrame;
 
-      // Calculate frame numbers (8 down to 1)
-      const frame1 = Math.max(1, 8 - floorFrame);
-      const frame2 = Math.max(1, 8 - floorFrame - 1);
-      const showBtn = frameProgressRef.current >= 6.95;
+      // Calculate frame numbers (0 to 81)
+      const frame1 = Math.max(0, Math.min(totalFrames - 1, floorFrame));
+      const frame2 = Math.max(0, Math.min(totalFrames - 1, floorFrame + 1));
+      const showBtn = frameProgressRef.current >= totalFrames - 1.5;
 
       // Only update state if values actually changed (smaller threshold for smoother transitions)
       if (frame1 !== lastFrameRef.current || Math.abs(blendAmount - lastOpacityRef.current) > 0.005 || showBtn !== frameState.showButton) {
@@ -103,12 +103,12 @@ const LoadingAnimation = () => {
     const handleWheel = (e) => {
       e.preventDefault();
 
-      // Higher sensitivity for more responsive cinematic feel
-      const sensitivity = 0.0025;
+      // Higher sensitivity for faster scrolling
+      const sensitivity = 0.008;
       targetProgressRef.current += e.deltaY * sensitivity;
 
-      // Clamp between 0 and 7
-      targetProgressRef.current = Math.max(0, Math.min(7, targetProgressRef.current));
+      // Clamp between 0 and totalFrames-1
+      targetProgressRef.current = Math.max(0, Math.min(totalFrames - 1, targetProgressRef.current));
     };
 
     const handleTouchStart = (e) => {
@@ -122,12 +122,12 @@ const LoadingAnimation = () => {
       // Calculate swipe distance
       const swipeDistance = touchStartY - touchEndY;
       
-      // Sensitivity for touch (adjust as needed)
-      const touchSensitivity = 0.008;
+      // Sensitivity for touch - increased for faster response
+      const touchSensitivity = 0.015;
       targetProgressRef.current += swipeDistance * touchSensitivity;
 
-      // Clamp between 0 and 7
-      targetProgressRef.current = Math.max(0, Math.min(7, targetProgressRef.current));
+      // Clamp between 0 and totalFrames-1
+      targetProgressRef.current = Math.max(0, Math.min(totalFrames - 1, targetProgressRef.current));
       
       // Reset for next touch move
       touchStartY = touchEndY;
@@ -188,7 +188,7 @@ const LoadingAnimation = () => {
           {/* Current frame */}
           <div className="image-display current">
             <img
-              src={`/animations/frame_${String(frameState.frame).padStart(4, '0')}.png`}
+              src={`/animations/animate_in_cinamtic_style_202605021652_${String(frameState.frame).padStart(3, '0')}.png`}
               alt={`Frame ${frameState.frame}`}
               draggable="false"
               className="frame-image"
@@ -200,7 +200,7 @@ const LoadingAnimation = () => {
           {frameState.opacity > 0 && (
             <div className="image-display next" style={{ opacity: frameState.opacity }}>
               <img
-                src={`/animations/frame_${String(frameState.nextFrame).padStart(4, '0')}.png`}
+                src={`/animations/animate_in_cinamtic_style_202605021652_${String(frameState.nextFrame).padStart(3, '0')}.png`}
                 alt={`Frame ${frameState.nextFrame}`}
                 draggable="false"
                 className="frame-image"
@@ -213,14 +213,11 @@ const LoadingAnimation = () => {
           <div className="code-overlay">
             <div className="code-box">
               <span className="code-text">
-                {frameState.frame === 1 && '// Start building'}
-                {frameState.frame === 2 && 'const future = "now"'}
-                {frameState.frame === 3 && '// Seamless workflow'}
-                {frameState.frame === 4 && 'function innovate() {}'}
-                {frameState.frame === 5 && '// Real-time editing'}
-                {frameState.frame === 6 && 'const collaborate = true'}
-                {frameState.frame === 7 && '<AI /> Powered'}
-                {frameState.frame === 8 && '// Welcome to FREYA'}
+                {frameState.frame < 20 && '// Welcome to FREYA'}
+                {frameState.frame >= 20 && frameState.frame < 40 && '<AI /> Powered'}
+                {frameState.frame >= 40 && frameState.frame < 60 && 'const collaborate = true'}
+                {frameState.frame >= 60 && frameState.frame < 80 && '// Real-time editing'}
+                {frameState.frame >= 80 && '// Start building'}
               </span>
             </div>
           </div>
@@ -229,7 +226,7 @@ const LoadingAnimation = () => {
         {/* Button overlay */}
         <div className={`button-overlay ${frameState.showButton ? 'show' : ''}`}>
           <div className="button-wrapper">
-          
+            
             <button 
               className="cta-button"
               onClick={() => navigate('/home')}
@@ -248,7 +245,7 @@ const LoadingAnimation = () => {
 
         {/* Frame counter */}
         <div className={`frame-counter ${imagesLoaded && !showIntro ? 'show' : ''}`}>
-          <span>{frameState.frame}</span> / <span>{totalFrames}</span>
+          <span>{frameState.frame}</span> / <span>{totalFrames - 1}</span>
         </div>
       </div>
 
