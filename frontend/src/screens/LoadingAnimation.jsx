@@ -68,49 +68,37 @@ const LoadingAnimation = () => {
   useEffect(() => {
     if (!imagesLoaded || showIntro) return;
 
-    let isMounted = true;
-
     const animate = () => {
-      if (!isMounted) return;
+      // Calculate velocity for smooth momentum
+      const diff = targetProgressRef.current - frameProgressRef.current;
+      frameProgressRef.current += diff * 0.1;
 
-      try {
-        // Calculate velocity for smooth momentum
-        const diff = targetProgressRef.current - frameProgressRef.current;
-        frameProgressRef.current += diff * 0.1;
+      // Clamp to valid range
+      frameProgressRef.current = Math.max(0, Math.min(totalFrames - 1, frameProgressRef.current));
 
-        // Clamp to valid range
-        frameProgressRef.current = Math.max(0, Math.min(totalFrames - 1, frameProgressRef.current));
+      // Get frame and blend
+      const floorFrame = Math.floor(frameProgressRef.current);
+      const blendAmount = frameProgressRef.current - floorFrame;
 
-        // Get frame and blend
-        const floorFrame = Math.floor(frameProgressRef.current);
-        const blendAmount = frameProgressRef.current - floorFrame;
+      const frame1 = Math.max(0, Math.min(totalFrames - 1, floorFrame));
+      const frame2 = Math.max(0, Math.min(totalFrames - 1, floorFrame + 1));
+      const showBtn = frameProgressRef.current >= totalFrames - 1.5;
 
-        const frame1 = Math.max(0, Math.min(totalFrames - 1, floorFrame));
-        const frame2 = Math.max(0, Math.min(totalFrames - 1, floorFrame + 1));
-        const showBtn = frameProgressRef.current >= totalFrames - 1.5;
-
-        // Update only when needed
-        if (frame1 !== lastFrameRef.current || Math.abs(blendAmount - lastOpacityRef.current) > 0.05 || showBtn !== frameState.showButton) {
-          lastFrameRef.current = frame1;
-          lastOpacityRef.current = blendAmount;
-          setFrameState({ frame: frame1, nextFrame: frame2, opacity: blendAmount, showButton: showBtn });
-        }
-      } catch (error) {
-        console.error('Animation error:', error);
+      // Update only when needed
+      if (frame1 !== lastFrameRef.current || Math.abs(blendAmount - lastOpacityRef.current) > 0.05 || showBtn !== frameState.showButton) {
+        lastFrameRef.current = frame1;
+        lastOpacityRef.current = blendAmount;
+        setFrameState({ frame: frame1, nextFrame: frame2, opacity: blendAmount, showButton: showBtn });
       }
 
-      if (isMounted) {
-        animationFrameRef.current = requestAnimationFrame(animate);
-      }
+      animationFrameRef.current = requestAnimationFrame(animate);
     };
 
     animationFrameRef.current = requestAnimationFrame(animate);
 
     return () => {
-      isMounted = false;
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
       }
     };
   }, [imagesLoaded, showIntro]);
@@ -120,22 +108,18 @@ const LoadingAnimation = () => {
     if (!imagesLoaded || showIntro) return;
 
     let touchStartY = 0;
-    let isMounted = true;
 
     const handleWheel = (e) => {
-      if (!isMounted) return;
       e.preventDefault();
       targetProgressRef.current += e.deltaY * 0.008;
       targetProgressRef.current = Math.max(0, Math.min(totalFrames - 1, targetProgressRef.current));
     };
 
     const handleTouchStart = (e) => {
-      if (!isMounted) return;
       touchStartY = e.touches[0].clientY;
     };
 
     const handleTouchMove = (e) => {
-      if (!isMounted) return;
       e.preventDefault();
       const touchEndY = e.touches[0].clientY;
       const swipeDistance = touchStartY - touchEndY;
@@ -151,7 +135,6 @@ const LoadingAnimation = () => {
       container.addEventListener('touchmove', handleTouchMove, { passive: false });
       
       return () => {
-        isMounted = false;
         container.removeEventListener('wheel', handleWheel);
         container.removeEventListener('touchstart', handleTouchStart);
         container.removeEventListener('touchmove', handleTouchMove);
