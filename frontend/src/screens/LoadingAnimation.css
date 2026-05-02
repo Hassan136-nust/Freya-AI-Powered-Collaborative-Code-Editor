@@ -477,6 +477,7 @@
   overflow: hidden;
   flex-shrink: 0;
   contain: layout style paint;
+  will-change: auto;
 }
 
 .image-display {
@@ -510,6 +511,7 @@
   -webkit-font-smoothing: antialiased;
   transform: translateZ(0);
   contain: layout style paint;
+  image-rendering: auto;
 }
 
 .image-display.current .frame-image {

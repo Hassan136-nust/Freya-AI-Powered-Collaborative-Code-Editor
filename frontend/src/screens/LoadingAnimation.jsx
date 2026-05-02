@@ -60,25 +60,36 @@ const LoadingAnimation = () => {
   useEffect(() => {
     if (!imagesLoaded || showIntro) return;
 
+    let lastUpdateTime = Date.now();
+    const targetFPS = 60;
+    const frameTime = 1000 / targetFPS;
+
     const animate = () => {
-      // Calculate velocity for ultra-smooth momentum
-      const diff = targetProgressRef.current - frameProgressRef.current;
-      frameProgressRef.current += diff * 0.08; // Smoother easing
+      const now = Date.now();
+      
+      // Only update if enough time has passed for next frame
+      if (now - lastUpdateTime >= frameTime) {
+        // Calculate velocity for ultra-smooth momentum
+        const diff = targetProgressRef.current - frameProgressRef.current;
+        frameProgressRef.current += diff * 0.08; // Smoother easing
 
-      // Get integer frame and blend amount
-      const floorFrame = Math.floor(frameProgressRef.current);
-      const blendAmount = frameProgressRef.current - floorFrame;
+        // Get integer frame and blend amount
+        const floorFrame = Math.floor(frameProgressRef.current);
+        const blendAmount = frameProgressRef.current - floorFrame;
 
-      // Calculate frame numbers (0 to 81)
-      const frame1 = Math.max(0, Math.min(totalFrames - 1, floorFrame));
-      const frame2 = Math.max(0, Math.min(totalFrames - 1, floorFrame + 1));
-      const showBtn = frameProgressRef.current >= totalFrames - 1.5;
+        // Calculate frame numbers (0 to 81)
+        const frame1 = Math.max(0, Math.min(totalFrames - 1, floorFrame));
+        const frame2 = Math.max(0, Math.min(totalFrames - 1, floorFrame + 1));
+        const showBtn = frameProgressRef.current >= totalFrames - 1.5;
 
-      // Only update state if values actually changed (smaller threshold for smoother transitions)
-      if (frame1 !== lastFrameRef.current || Math.abs(blendAmount - lastOpacityRef.current) > 0.005 || showBtn !== frameState.showButton) {
-        lastFrameRef.current = frame1;
-        lastOpacityRef.current = blendAmount;
-        setFrameState({ frame: frame1, nextFrame: frame2, opacity: blendAmount, showButton: showBtn });
+        // Only update state if values actually changed (larger threshold to reduce updates)
+        if (frame1 !== lastFrameRef.current || Math.abs(blendAmount - lastOpacityRef.current) > 0.02 || showBtn !== frameState.showButton) {
+          lastFrameRef.current = frame1;
+          lastOpacityRef.current = blendAmount;
+          setFrameState({ frame: frame1, nextFrame: frame2, opacity: blendAmount, showButton: showBtn });
+        }
+
+        lastUpdateTime = now;
       }
 
       animationFrameRef.current = requestAnimationFrame(animate);
