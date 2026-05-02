@@ -31,8 +31,8 @@ const LoadingAnimation = () => {
         currentIndex++;
       } else {
         clearInterval(typingInterval);
-        // Wait 0.5 seconds then hide intro
-        setTimeout(() => setShowIntro(false), 500);
+        // Immediately hide intro - no wait
+        setShowIntro(false);
       }
     }, 30);
 
@@ -118,8 +118,11 @@ const LoadingAnimation = () => {
       const sensitivity = 0.008;
       targetProgressRef.current += e.deltaY * sensitivity;
 
-      // Clamp between 0 and totalFrames-1
+      // Clamp between 0 and totalFrames-1 with safety bounds
       targetProgressRef.current = Math.max(0, Math.min(totalFrames - 1, targetProgressRef.current));
+      
+      // Ensure frameProgressRef stays in bounds
+      frameProgressRef.current = Math.max(0, Math.min(totalFrames - 1, frameProgressRef.current));
     };
 
     const handleTouchStart = (e) => {
@@ -137,8 +140,11 @@ const LoadingAnimation = () => {
       const touchSensitivity = 0.015;
       targetProgressRef.current += swipeDistance * touchSensitivity;
 
-      // Clamp between 0 and totalFrames-1
+      // Clamp between 0 and totalFrames-1 with safety bounds
       targetProgressRef.current = Math.max(0, Math.min(totalFrames - 1, targetProgressRef.current));
+      
+      // Ensure frameProgressRef stays in bounds
+      frameProgressRef.current = Math.max(0, Math.min(totalFrames - 1, frameProgressRef.current));
       
       // Reset for next touch move
       touchStartY = touchEndY;
