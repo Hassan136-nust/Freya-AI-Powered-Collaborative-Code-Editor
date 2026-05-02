@@ -9,6 +9,7 @@ const LoadingAnimation = () => {
   const [frameState, setFrameState] = useState({ frame: 0, nextFrame: 0, opacity: 0, showButton: false });
   const [showIntro, setShowIntro] = useState(true);
   const [displayedText, setDisplayedText] = useState('');
+  const [isTypingComplete, setIsTypingComplete] = useState(false);
   const navigate = useNavigate();
 
   const totalFrames = 82;
@@ -18,47 +19,123 @@ const LoadingAnimation = () => {
   const lastFrameRef = useRef(0);
   const lastOpacityRef = useRef(0);
   const imageCache = useRef(new Map());
+  const isMountedRef = useRef(true);
+  const hasInitializedRef = useRef(false);
 
   const fullText = 'WELCOME to FREYA';
 
   // Prevent body scroll and cleanup on unmount
   useEffect(() => {
+    isMountedRef.current = true;
+    
+    // Check if we've already shown the animation in this session
+    const hasSeenAnimation = sessionStorage.getItem('freya_animation_seen');
+    
+    // If user refreshes on the animation page, reset everything
+    if (hasSeenAnimation === 'true') {
+      sessionStorage.removeItem('freya_animation_seen');
+    }
+    
     // Prevent body scroll
+    const originalOverflow = document.body.style.overflow;
+    const originalPosition = document.body.style.position;
+    const originalWidth = document.body.style.width;
+    const originalHeight = document.body.style.height;
+    
     document.body.style.overflow = 'hidden';
     document.body.style.position = 'fixed';
     document.body.style.width = '100%';
     document.body.style.height = '100%';
 
     return () => {
+      isMountedRef.current = false;
+      
+      // Mark animation as seen when leaving
+      sessionStorage.setItem('freya_animation_seen', 'true');
+      
       // Restore body scroll on unmount
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
-      document.body.style.height = '';
+      document.body.style.overflow = originalOverflow;
+      document.body.style.position = originalPosition;
+      document.body.style.width = originalWidth;
+      document.body.style.height = originalHeight;
+      
+      // Clean up all refs
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      
+      // Reset progress refs
+      frameProgressRef.current = 0;
+      targetProgressRef.current = 0;
+      lastFrameRef.current = 0;
+      lastOpacityRef.current = 0;
     };
   }, []);
 
-  // Typing animation - faster and no delay
+  // Typing animation - faster and no delay with better error handling
   useEffect(() => {
-    if (!showIntro) return;
+    if (!showIntro || !imagesLoaded) return;
+    if (isTypingComplete) return;
 
     let currentIndex = 0;
-    const typingInterval = setInterval(() => {
-      if (currentIndex <= fullText.length) {
-        setDisplayedText(fullText.slice(0, currentIndex));
-        currentIndex++;
-      } else {
-        clearInterval(typingInterval);
-        // Immediately hide intro after typing completes
-        setTimeout(() => setShowIntro(false), 100);
-      }
-    }, 50); // Faster typing speed
+    let typingInterval = null;
+    
+    // Small delay to ensure DOM is ready
+    const startTimeout = setTimeout(() => {
+      if (!isMountedRef.current) return;
+      
+      typingInterval = setInterval(() => {
+        if (!isMountedRef.current) {
+          clearInterval(typingInterval);
+          return;
+        }
+        
+        if (currentIndex <= fullText.length) {
+          setDisplayedText(fullText.slice(0, currentIndex));
+          currentIndex++;
+        } else {
+          clearInterval(typingInterval);
+          setIsTypingComplete(true);
+          
+          // Immediately hide intro after typing completes
+          setTimeout(() => {
+            if (isMountedRef.current) {
+              setShowIntro(false);
+            }
+          }, 100);
+        }
+      }, 50); // Faster typing speed
+    }, 100);
 
-    return () => clearInterval(typingInterval);
-  }, [showIntro]);
+    // Fallback: if typing doesn't complete in 5 seconds, force completion
+    const fallbackTimeout = setTimeout(() => {
+      if (isMountedRef.current && showIntro && !isTypingComplete) {
+        console.log('Typing animation fallback triggered');
+        setDisplayedText(fullText);
+        setIsTypingComplete(true);
+        setTimeout(() => {
+          if (isMountedRef.current) {
+            setShowIntro(false);
+          }
+        }, 100);
+      }
+    }, 5000);
+
+    return () => {
+      clearTimeout(startTimeout);
+      clearTimeout(fallbackTimeout);
+      if (typingInterval) {
+        clearInterval(typingInterval);
+      }
+    };
+  }, [showIntro, imagesLoaded, isTypingComplete, fullText]);
 
   // Preload all images with error handling and caching
   useEffect(() => {
+    if (hasInitializedRef.current) return; // Prevent re-initialization on refresh
+    hasInitializedRef.current = true;
+    
     let loaded = 0;
     let failed = 0;
     const loadPromises = [];
@@ -66,7 +143,12 @@ const LoadingAnimation = () => {
     for (let i = 0; i < totalFrames; i++) {
       const promise = new Promise((resolve) => {
         const img = new Image();
+        
         img.onload = () => {
+          if (!isMountedRef.current) {
+            resolve();
+            return;
+          }
           loaded++;
           imageCache.current.set(i, img);
           setLoadedCount(loaded);
@@ -75,7 +157,12 @@ const LoadingAnimation = () => {
           }
           resolve();
         };
+        
         img.onerror = () => {
+          if (!isMountedRef.current) {
+            resolve();
+            return;
+          }
           failed++;
           console.warn(`Failed to load frame ${i}`);
           if (loaded + failed === totalFrames) {
@@ -83,6 +170,7 @@ const LoadingAnimation = () => {
           }
           resolve();
         };
+        
         img.src = `/animations/animate_in_cinamtic_style_202605021652_${String(i).padStart(3, '0')}.png`;
       });
       loadPromises.push(promise);
@@ -94,16 +182,16 @@ const LoadingAnimation = () => {
     };
   }, []);
 
-  // Smooth animation loop - optimized for stability
+  // Smooth animation loop - optimized for stability with mount check
   useEffect(() => {
-    if (!imagesLoaded || showIntro) return;
+    if (!imagesLoaded || showIntro || !isMountedRef.current) return;
 
     let isActive = true;
     let lastUpdateTime = 0;
     const updateInterval = 1000 / 60; // 60 FPS cap
 
     const animate = (currentTime) => {
-      if (!isActive) return;
+      if (!isActive || !isMountedRef.current) return;
 
       // Throttle updates to 60 FPS
       if (currentTime - lastUpdateTime < updateInterval) {
@@ -131,10 +219,15 @@ const LoadingAnimation = () => {
       if (frame1 !== lastFrameRef.current || Math.abs(blendAmount - lastOpacityRef.current) > 0.05 || showBtn !== frameState.showButton) {
         lastFrameRef.current = frame1;
         lastOpacityRef.current = blendAmount;
-        setFrameState({ frame: frame1, nextFrame: frame2, opacity: blendAmount, showButton: showBtn });
+        
+        if (isMountedRef.current) {
+          setFrameState({ frame: frame1, nextFrame: frame2, opacity: blendAmount, showButton: showBtn });
+        }
       }
 
-      animationFrameRef.current = requestAnimationFrame(animate);
+      if (isMountedRef.current) {
+        animationFrameRef.current = requestAnimationFrame(animate);
+      }
     };
 
     animationFrameRef.current = requestAnimationFrame(animate);
@@ -148,15 +241,17 @@ const LoadingAnimation = () => {
     };
   }, [imagesLoaded, showIntro, frameState.showButton]);
 
-  // Handle scroll and touch - improved stability
+  // Handle scroll and touch - improved stability with mount check
   useEffect(() => {
-    if (!imagesLoaded || showIntro) return;
+    if (!imagesLoaded || showIntro || !isMountedRef.current) return;
 
     let touchStartY = 0;
     let isScrolling = false;
     let scrollTimeout = null;
 
     const handleWheel = (e) => {
+      if (!isMountedRef.current) return;
+      
       e.preventDefault();
       e.stopPropagation();
       
@@ -177,10 +272,13 @@ const LoadingAnimation = () => {
     };
 
     const handleTouchStart = (e) => {
+      if (!isMountedRef.current) return;
       touchStartY = e.touches[0].clientY;
     };
 
     const handleTouchMove = (e) => {
+      if (!isMountedRef.current) return;
+      
       e.preventDefault();
       e.stopPropagation();
       
