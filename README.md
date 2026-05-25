@@ -943,7 +943,7 @@ This project is licensed under the **ISC License**.
 
 | Browser | Version | Support |
 |---------|---------|---------|
-| Chrome | 90+ | ✅ Full |
+| Chrome | 91+ | ✅ Full |
 | Firefox | 88+ | ✅ Full |
 | Safari | 15+ | ✅ Full |
 | Edge | 90+ | ✅ Full |
