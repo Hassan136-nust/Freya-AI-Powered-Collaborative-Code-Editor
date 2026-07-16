@@ -9,6 +9,7 @@ body:has(.animation-container) {
   height: 100%;
   touch-action: none;
   overscroll-behavior: none;
+  background-color: #12110e;
 }
 
 /* Main Container - NO SCROLL */
@@ -19,7 +20,7 @@ body:has(.animation-container) {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: transparent;
+  background: #12110e;
   perspective: 1000px;
   touch-action: none;
   overscroll-behavior: none;

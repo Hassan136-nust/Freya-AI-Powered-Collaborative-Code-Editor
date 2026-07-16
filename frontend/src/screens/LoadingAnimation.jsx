@@ -1,47 +1,64 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import gsap from 'gsap';
 import './LoadingAnimation.css';
 
 const LoadingAnimation = () => {
   const containerRef = useRef(null);
+  const canvasRef = useRef(null);
+  
   const [imagesLoaded, setImagesLoaded] = useState(false);
   const [loadedCount, setLoadedCount] = useState(0);
-  const [frameState, setFrameState] = useState({ frame: 0, nextFrame: 0, opacity: 0, showButton: false });
+  const [frameState, setFrameState] = useState({ frame: 1, nextFrame: 2, opacity: 0, showButton: false });
   const [showIntro, setShowIntro] = useState(true);
   const [displayedText, setDisplayedText] = useState('');
   const [isTypingComplete, setIsTypingComplete] = useState(false);
+  const [redrawTrigger, setRedrawTrigger] = useState(0);
+  const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
   const navigate = useNavigate();
 
-  const totalFrames = 82;
-  const frameProgressRef = useRef(0);
-  const animationFrameRef = useRef(null);
-  const targetProgressRef = useRef(0);
-  const lastFrameRef = useRef(0);
-  const lastOpacityRef = useRef(0);
+  const totalFrames = 240;
+  const frameStep = 3; // Load every 3rd frame to reduce download count to 80 frames
+  const preloadCount = 10; // Preload first 10 frames (mapped to step) for immediate display
+  const frameObj = useRef({ val: 1 });
   const imageCache = useRef(new Map());
+  const loadingFrames = useRef(new Set());
   const isMountedRef = useRef(true);
   const hasInitializedRef = useRef(false);
 
   const fullText = 'WELCOME to FREYA';
 
+  // Helper to map virtual frame index (1-240) to the nearest available step-based frame
+  const getActualFrameNumber = (frameIndex) => {
+    if (frameIndex <= 1) return 1;
+    if (frameIndex >= totalFrames) return totalFrames;
+    const val = Math.round((frameIndex - 1) / frameStep) * frameStep + 1;
+    return Math.min(totalFrames, val);
+  };
+
+  // Track window resizing to ensure perfect responsiveness and no black borders
+  useEffect(() => {
+    const handleResize = () => {
+      setDimensions({ width: window.innerWidth, height: window.innerHeight });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Prevent body scroll and cleanup on unmount
   useEffect(() => {
     isMountedRef.current = true;
-    
-    // Check if we've already shown the animation in this session
+
     const hasSeenAnimation = sessionStorage.getItem('freya_animation_seen');
-    
-    // If user refreshes on the animation page, reset everything
     if (hasSeenAnimation === 'true') {
       sessionStorage.removeItem('freya_animation_seen');
     }
-    
-    // Prevent body scroll
+
     const originalOverflow = document.body.style.overflow;
     const originalPosition = document.body.style.position;
     const originalWidth = document.body.style.width;
     const originalHeight = document.body.style.height;
-    
+
     document.body.style.overflow = 'hidden';
     document.body.style.position = 'fixed';
     document.body.style.width = '100%';
@@ -49,69 +66,54 @@ const LoadingAnimation = () => {
 
     return () => {
       isMountedRef.current = false;
-      
-      // Mark animation as seen when leaving
       sessionStorage.setItem('freya_animation_seen', 'true');
-      
-      // Restore body scroll on unmount
+
       document.body.style.overflow = originalOverflow;
       document.body.style.position = originalPosition;
       document.body.style.width = originalWidth;
       document.body.style.height = originalHeight;
-      
-      // Clean up all refs
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-      
-      // Reset progress refs
-      frameProgressRef.current = 0;
-      targetProgressRef.current = 0;
-      lastFrameRef.current = 0;
-      lastOpacityRef.current = 0;
+
+      gsap.killTweensOf(frameObj.current);
+      imageCache.current.clear();
+      loadingFrames.current.clear();
     };
   }, []);
 
-  // Typing animation - faster and no delay with better error handling
+  // Typing animation - runs after critical frames are loaded
   useEffect(() => {
     if (!showIntro || !imagesLoaded) return;
     if (isTypingComplete) return;
 
     let currentIndex = 0;
     let typingInterval = null;
-    
-    // Small delay to ensure DOM is ready
+
     const startTimeout = setTimeout(() => {
       if (!isMountedRef.current) return;
-      
+
       typingInterval = setInterval(() => {
         if (!isMountedRef.current) {
           clearInterval(typingInterval);
           return;
         }
-        
+
         if (currentIndex <= fullText.length) {
           setDisplayedText(fullText.slice(0, currentIndex));
           currentIndex++;
         } else {
           clearInterval(typingInterval);
           setIsTypingComplete(true);
-          
-          // Immediately hide intro after typing completes
+
           setTimeout(() => {
             if (isMountedRef.current) {
               setShowIntro(false);
             }
           }, 100);
         }
-      }, 50); // Faster typing speed
+      }, 50);
     }, 100);
 
-    // Fallback: if typing doesn't complete in 5 seconds, force completion
     const fallbackTimeout = setTimeout(() => {
       if (isMountedRef.current && showIntro && !isTypingComplete) {
-        console.log('Typing animation fallback triggered');
         setDisplayedText(fullText);
         setIsTypingComplete(true);
         setTimeout(() => {
@@ -131,144 +133,228 @@ const LoadingAnimation = () => {
     };
   }, [showIntro, imagesLoaded, isTypingComplete, fullText]);
 
-  // Preload all images with error handling and caching
+  // Progressive image loading (Lazy loading step-mapped frames in the background)
   useEffect(() => {
-    if (hasInitializedRef.current) return; // Prevent re-initialization on refresh
+    if (hasInitializedRef.current) return;
     hasInitializedRef.current = true;
-    
-    let loaded = 0;
-    let failed = 0;
-    const loadPromises = [];
 
-    for (let i = 0; i < totalFrames; i++) {
-      const promise = new Promise((resolve) => {
-        const img = new Image();
-        
-        img.onload = () => {
-          if (!isMountedRef.current) {
-            resolve();
-            return;
-          }
-          loaded++;
-          imageCache.current.set(i, img);
-          setLoadedCount(loaded);
-          if (loaded + failed === totalFrames) {
-            setImagesLoaded(true);
-          }
-          resolve();
-        };
-        
-        img.onerror = () => {
-          if (!isMountedRef.current) {
-            resolve();
-            return;
-          }
-          failed++;
-          console.warn(`Failed to load frame ${i}`);
-          if (loaded + failed === totalFrames) {
-            setImagesLoaded(true);
-          }
-          resolve();
-        };
-        
-        img.src = `/animations/animate_in_cinamtic_style_202605021652_${String(i).padStart(3, '0')}.png`;
-      });
-      loadPromises.push(promise);
+    const targetFrames = [];
+    for (let i = 1; i <= totalFrames; i += frameStep) {
+      targetFrames.push(i);
+    }
+    if (targetFrames[targetFrames.length - 1] !== totalFrames) {
+      targetFrames.push(totalFrames);
     }
 
-    return () => {
-      // Cleanup image cache on unmount
-      imageCache.current.clear();
+    let preloaded = 0;
+    const initialPreloadList = targetFrames.slice(0, preloadCount);
+
+    initialPreloadList.forEach((frameNum) => {
+      const img = new Image();
+      img.onload = () => {
+        if (!isMountedRef.current) return;
+        imageCache.current.set(frameNum, img);
+        preloaded++;
+        setLoadedCount(preloaded);
+        if (preloaded === initialPreloadList.length) {
+          setImagesLoaded(true);
+          loadRemainingFrames();
+        }
+      };
+      img.onerror = () => {
+        if (!isMountedRef.current) return;
+        preloaded++;
+        setLoadedCount(preloaded);
+        if (preloaded === initialPreloadList.length) {
+          setImagesLoaded(true);
+          loadRemainingFrames();
+        }
+      };
+      img.src = `/ani/ezgif-frame-${String(frameNum).padStart(3, '0')}.jpg`;
+    });
+
+    const loadRemainingFrames = async () => {
+      const remaining = targetFrames.slice(preloadCount);
+      const batchSize = 4;
+      for (let i = 0; i < remaining.length; i += batchSize) {
+        if (!isMountedRef.current) break;
+        const batch = remaining.slice(i, i + batchSize);
+        await Promise.all(
+          batch.map((frameIndex) => {
+            return new Promise((resolve) => {
+              if (imageCache.current.has(frameIndex)) {
+                resolve();
+                return;
+              }
+              const img = new Image();
+              img.onload = () => {
+                imageCache.current.set(frameIndex, img);
+                resolve();
+              };
+              img.onerror = () => {
+                resolve();
+              };
+              img.src = `/ani/ezgif-frame-${String(frameIndex).padStart(3, '0')}.jpg`;
+            });
+          })
+        );
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      }
     };
   }, []);
 
-  // Smooth animation loop - optimized for stability with mount check
+  // Helper to dynamically get or trigger load of a specific frame
+  const getImage = (frameIndex) => {
+    if (imageCache.current.has(frameIndex)) {
+      return imageCache.current.get(frameIndex);
+    }
+
+    if (!loadingFrames.current.has(frameIndex)) {
+      loadingFrames.current.add(frameIndex);
+      const img = new Image();
+      img.onload = () => {
+        imageCache.current.set(frameIndex, img);
+        loadingFrames.current.delete(frameIndex);
+        setRedrawTrigger((prev) => prev + 1); // trigger canvas redraw
+      };
+      img.onerror = () => {
+        loadingFrames.current.delete(frameIndex);
+      };
+      img.src = `/ani/ezgif-frame-${String(frameIndex).padStart(3, '0')}.jpg`;
+    }
+    return null;
+  };
+
+  // Canvas drawing effect: draws current frame and next frame with opacity blending
   useEffect(() => {
-    if (!imagesLoaded || showIntro || !isMountedRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas || !imagesLoaded) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-    let isActive = true;
-    let lastUpdateTime = 0;
-    const updateInterval = 1000 / 60; // 60 FPS cap
+    // Use actual dimensions state to scale correctly
+    canvas.width = dimensions.width * window.devicePixelRatio;
+    canvas.height = dimensions.height * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
-    const animate = (currentTime) => {
-      if (!isActive || !isMountedRef.current) return;
-
-      // Throttle updates to 60 FPS
-      if (currentTime - lastUpdateTime < updateInterval) {
-        animationFrameRef.current = requestAnimationFrame(animate);
-        return;
-      }
-      lastUpdateTime = currentTime;
-
-      // Calculate velocity for smooth momentum with better easing
-      const diff = targetProgressRef.current - frameProgressRef.current;
-      frameProgressRef.current += diff * 0.15; // Slightly faster response
-
-      // Clamp to valid range
-      frameProgressRef.current = Math.max(0, Math.min(totalFrames - 1, frameProgressRef.current));
-
-      // Get frame and blend
-      const floorFrame = Math.floor(frameProgressRef.current);
-      const blendAmount = frameProgressRef.current - floorFrame;
-
-      const frame1 = Math.max(0, Math.min(totalFrames - 1, floorFrame));
-      const frame2 = Math.max(0, Math.min(totalFrames - 1, floorFrame + 1));
-      const showBtn = frameProgressRef.current >= totalFrames - 1.5;
-
-      // Update only when needed
-      if (frame1 !== lastFrameRef.current || Math.abs(blendAmount - lastOpacityRef.current) > 0.05 || showBtn !== frameState.showButton) {
-        lastFrameRef.current = frame1;
-        lastOpacityRef.current = blendAmount;
-        
-        if (isMountedRef.current) {
-          setFrameState({ frame: frame1, nextFrame: frame2, opacity: blendAmount, showButton: showBtn });
+    const getClosestLoadedImage = (frame) => {
+      if (imageCache.current.has(frame)) return imageCache.current.get(frame);
+      for (let i = 1; i <= totalFrames; i++) {
+        if (frame - i >= 1 && imageCache.current.has(frame - i)) {
+          return imageCache.current.get(frame - i);
+        }
+        if (frame + i <= totalFrames && imageCache.current.has(frame + i)) {
+          return imageCache.current.get(frame + i);
         }
       }
+      return null;
+    };
 
-      if (isMountedRef.current) {
-        animationFrameRef.current = requestAnimationFrame(animate);
+    const draw = () => {
+      // Clear with warm charcoal background matching the images
+      ctx.fillStyle = '#12110e';
+      ctx.fillRect(0, 0, dimensions.width, dimensions.height);
+
+      const actualFrame1 = getActualFrameNumber(frameState.frame);
+      const actualFrame2 = getActualFrameNumber(frameState.nextFrame);
+
+      const img1 = getImage(actualFrame1);
+      const img2 = frameState.opacity > 0 ? getImage(actualFrame2) : null;
+
+      // perfect responsive cover scaling
+      const drawCover = (img, opacity) => {
+        ctx.globalAlpha = opacity;
+        const iw = img.width;
+        const ih = img.height;
+        const isMobile = dimensions.width < 768;
+
+        if (isMobile) {
+          // On mobile, fit the entire image to the viewport width (scaled down to 85% to fit beautifully without cutoffs)
+          const targetWidth = dimensions.width * 0.85;
+          const r = targetWidth / iw;
+          const destWidth = iw * r;
+          const destHeight = ih * r;
+          
+          const destX = (dimensions.width - destWidth) / 2;
+          const destY = (dimensions.height - destHeight) / 2;
+
+          ctx.drawImage(img, 0, 0, iw, ih, destX, destY, destWidth, destHeight);
+        } else {
+          // On desktop, use standard cover scaling
+          const r = Math.max(dimensions.width / iw, dimensions.height / ih);
+          const nw = iw * r;
+          const nh = ih * r;
+
+          const cx = (nw - dimensions.width) / r * 0.5;
+          const cy = (nh - dimensions.height) / r * 0.5;
+          const cw = dimensions.width / r;
+          const ch = dimensions.height / r;
+
+          ctx.drawImage(
+            img,
+            Math.max(0, cx),
+            Math.max(0, cy),
+            Math.min(iw, cw),
+            Math.min(ih, ch),
+            0,
+            0,
+            dimensions.width,
+            dimensions.height
+          );
+        }
+      };
+
+      if (img1 && img2 && frameState.opacity > 0) {
+        drawCover(img1, 1 - frameState.opacity);
+        drawCover(img2, frameState.opacity);
+      } else {
+        const activeImg = img1 || getClosestLoadedImage(actualFrame1);
+        if (activeImg) {
+          drawCover(activeImg, 1.0);
+        }
       }
     };
 
-    animationFrameRef.current = requestAnimationFrame(animate);
+    draw();
+  }, [frameState, imagesLoaded, redrawTrigger, dimensions]);
 
-    return () => {
-      isActive = false;
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-    };
-  }, [imagesLoaded, showIntro, frameState.showButton]);
-
-  // Handle scroll and touch - improved stability with mount check
+  // Scroll and touch animation controller using GSAP for inertia
   useEffect(() => {
     if (!imagesLoaded || showIntro || !isMountedRef.current) return;
 
     let touchStartY = 0;
-    let isScrolling = false;
-    let scrollTimeout = null;
 
     const handleWheel = (e) => {
       if (!isMountedRef.current) return;
-      
       e.preventDefault();
       e.stopPropagation();
-      
-      // Debounce rapid scroll events
-      if (!isScrolling) {
-        isScrolling = true;
-      }
-      
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(() => {
-        isScrolling = false;
-      }, 50);
 
-      // Smoother scroll with better delta handling
-      const delta = e.deltaY * 0.01;
-      targetProgressRef.current += delta;
-      targetProgressRef.current = Math.max(0, Math.min(totalFrames - 1, targetProgressRef.current));
+      const scrollSensitivity = 0.55;
+      const delta = e.deltaY * scrollSensitivity;
+      const targetVal = Math.max(1, Math.min(totalFrames, frameObj.current.val + delta));
+
+      gsap.killTweensOf(frameObj.current);
+      gsap.to(frameObj.current, {
+        val: targetVal,
+        duration: 0.35,
+        ease: 'power2.out',
+        onUpdate: () => {
+          if (!isMountedRef.current) return;
+          const val = frameObj.current.val;
+          const floorFrame = Math.floor(val);
+          const blendAmount = val - floorFrame;
+          const frame1 = Math.max(1, Math.min(totalFrames, floorFrame));
+          const frame2 = Math.max(1, Math.min(totalFrames, floorFrame + 1));
+          const showBtn = val >= totalFrames - 1.5;
+
+          setFrameState({
+            frame: frame1,
+            nextFrame: frame2,
+            opacity: blendAmount,
+            showButton: showBtn,
+          });
+        },
+      });
     };
 
     const handleTouchStart = (e) => {
@@ -278,26 +364,45 @@ const LoadingAnimation = () => {
 
     const handleTouchMove = (e) => {
       if (!isMountedRef.current) return;
-      
       e.preventDefault();
       e.stopPropagation();
-      
+
       const touchEndY = e.touches[0].clientY;
       const swipeDistance = touchStartY - touchEndY;
-      targetProgressRef.current += swipeDistance * 0.02;
-      targetProgressRef.current = Math.max(0, Math.min(totalFrames - 1, targetProgressRef.current));
+      const targetVal = Math.max(1, Math.min(totalFrames, frameObj.current.val + swipeDistance * 0.8));
       touchStartY = touchEndY;
+
+      gsap.killTweensOf(frameObj.current);
+      gsap.to(frameObj.current, {
+        val: targetVal,
+        duration: 0.35,
+        ease: 'power2.out',
+        onUpdate: () => {
+          if (!isMountedRef.current) return;
+          const val = frameObj.current.val;
+          const floorFrame = Math.floor(val);
+          const blendAmount = val - floorFrame;
+          const frame1 = Math.max(1, Math.min(totalFrames, floorFrame));
+          const frame2 = Math.max(1, Math.min(totalFrames, floorFrame + 1));
+          const showBtn = val >= totalFrames - 1.5;
+
+          setFrameState({
+            frame: frame1,
+            nextFrame: frame2,
+            opacity: blendAmount,
+            showButton: showBtn,
+          });
+        },
+      });
     };
 
     const container = containerRef.current;
     if (container) {
-      // Use capture phase to ensure we catch events first
       container.addEventListener('wheel', handleWheel, { passive: false, capture: true });
       container.addEventListener('touchstart', handleTouchStart, { passive: true });
       container.addEventListener('touchmove', handleTouchMove, { passive: false, capture: true });
-      
+
       return () => {
-        clearTimeout(scrollTimeout);
         container.removeEventListener('wheel', handleWheel, { capture: true });
         container.removeEventListener('touchstart', handleTouchStart);
         container.removeEventListener('touchmove', handleTouchMove, { capture: true });
@@ -313,9 +418,9 @@ const LoadingAnimation = () => {
           <div className="loading-spinner"></div>
           <p className="loading-text">Loading Experience...</p>
           <div className="loading-progress">
-            <div 
-              className="loading-progress-bar" 
-              style={{ width: `${(loadedCount / totalFrames) * 100}%` }}
+            <div
+              className="loading-progress-bar"
+              style={{ width: `${(loadedCount / preloadCount) * 100}%` }}
             ></div>
           </div>
         </div>
@@ -371,46 +476,29 @@ const LoadingAnimation = () => {
 
         {/* Light streaks */}
         <div className="light-streaks">
-          <div className="streak streak-1"></div>
+          . <div className="streak streak-1"></div>
           <div className="streak streak-2"></div>
           <div className="streak streak-3"></div>
         </div>
 
-        {/* Image display with smooth blending */}
+        {/* Canvas display with smooth blending */}
         <div className="image-container">
-          {/* Current frame */}
-          <div className="image-display current">
-            <img
-              src={`/animations/animate_in_cinamtic_style_202605021652_${String(frameState.frame).padStart(3, '0')}.png`}
-              alt={`Frame ${frameState.frame}`}
-              draggable="false"
-              className="frame-image"
-            />
-            <div className="image-glow"></div>
-          </div>
-
-          {/* Next frame - blended on top */}
-          {frameState.opacity > 0 && (
-            <div className="image-display next" style={{ opacity: frameState.opacity }}>
-              <img
-                src={`/animations/animate_in_cinamtic_style_202605021652_${String(frameState.nextFrame).padStart(3, '0')}.png`}
-                alt={`Frame ${frameState.nextFrame}`}
-                draggable="false"
-                className="frame-image"
-              />
-              <div className="image-glow"></div>
-            </div>
-          )}
+          <canvas
+            ref={canvasRef}
+            className="frame-image"
+            style={{ width: '100%', height: '100%' }}
+          />
+          <div className="image-glow"></div>
 
           {/* Code overlay */}
           <div className="code-overlay">
             <div className="code-box">
               <span className="code-text">
-                {frameState.frame < 20 && '// Welcome to FREYA'}
-                {frameState.frame >= 20 && frameState.frame < 40 && '<AI /> Powered'}
-                {frameState.frame >= 40 && frameState.frame < 60 && 'const collaborate = true'}
-                {frameState.frame >= 60 && frameState.frame < 80 && '// Real-time editing'}
-                {frameState.frame >= 80 && '// Start building'}
+                {frameState.frame < 40 && '// Welcome to FREYA'}
+                {frameState.frame >= 40 && frameState.frame < 100 && '<AI /> Powered'}
+                {frameState.frame >= 100 && frameState.frame < 160 && 'const collaborate = true'}
+                {frameState.frame >= 160 && frameState.frame < 220 && '// Real-time editing'}
+                {frameState.frame >= 220 && '// Start building'}
               </span>
             </div>
           </div>
@@ -419,8 +507,7 @@ const LoadingAnimation = () => {
         {/* Button overlay */}
         <div className={`button-overlay ${frameState.showButton ? 'show' : ''}`}>
           <div className="button-wrapper">
-          
-            <button 
+            <button
               className="cta-button"
               onClick={() => navigate('/home')}
             >
@@ -438,7 +525,7 @@ const LoadingAnimation = () => {
 
         {/* Frame counter */}
         <div className={`frame-counter ${imagesLoaded && !showIntro ? 'show' : ''}`}>
-          <span>{frameState.frame}</span> / <span>{totalFrames - 1}</span>
+          <span>{frameState.frame}</span> / <span>{totalFrames}</span>
         </div>
       </div>
 

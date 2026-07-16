@@ -10,7 +10,7 @@ const LandingAnimation = () => {
   const [showButton, setShowButton] = useState(false);
   const navigate = useNavigate();
 
-  const totalFrames = 8;
+  const totalFrames = 150;
   const animationDuration = 4500; // 4.5 seconds
 
   useEffect(() => {
@@ -18,29 +18,29 @@ const LandingAnimation = () => {
     const images = [];
     for (let i = 1; i <= totalFrames; i++) {
       const img = new Image();
-      img.src = `/animations/frame_${String(i).padStart(4, '0')}.png`;
+      img.src = `/ani/ezgif-frame-{String(i).padStart(4, '0')}.jpg`;
       images.push(img);
     }
 
     // Start animation after a brief delay
     const startDelay = setTimeout(() => {
       const startTime = Date.now();
-      
+
       const animate = () => {
         const elapsed = Date.now() - startTime;
         const progress = Math.min(elapsed / animationDuration, 1);
-        
+
         // Cinematic easing (ease-in-out-cubic)
         const eased = progress < 0.5
           ? 4 * progress * progress * progress
           : 1 - Math.pow(-2 * progress + 2, 3) / 2;
-        
+
         setProgress(eased);
-        
+
         // Calculate current frame with smooth transitions
         const frameIndex = Math.floor(eased * (totalFrames - 1));
         setCurrentFrame(frameIndex);
-        
+
         if (progress < 1) {
           requestAnimationFrame(animate);
         } else {
@@ -51,7 +51,7 @@ const LandingAnimation = () => {
           }, 500);
         }
       };
-      
+
       requestAnimationFrame(animate);
     }, 300);
 
@@ -102,16 +102,16 @@ const LandingAnimation = () => {
           const frameNum = i + 1;
           const isActive = i === currentFrame;
           const isPrev = i === currentFrame - 1;
-          
+
           // Calculate transform based on progress
           const frameProgress = (progress * totalFrames) - i;
-          const scale = isActive 
+          const scale = isActive
             ? 1 + (isComplete ? 0.05 : Math.sin(progress * Math.PI) * 0.02)
             : 1;
           const opacity = isActive ? 1 : isPrev ? 0.3 : 0;
           const translateY = isActive ? 0 : frameProgress * -20;
           const blur = isActive ? 0 : 5;
-          
+
           return (
             <div
               key={frameNum}
@@ -124,11 +124,11 @@ const LandingAnimation = () => {
               }}
             >
               <img
-                src={`/animations/frame_${String(frameNum).padStart(4, '0')}.png`}
+                src={`/ani/ezgif-frame-${String(frameNum).padStart(4, '0')}.jpg`}
                 alt={`Frame ${frameNum}`}
                 draggable="false"
               />
-              
+
               {/* Glow effect on active frame */}
               {isActive && (
                 <div className="frame-glow"></div>
@@ -152,7 +152,7 @@ const LandingAnimation = () => {
       </div>
 
       {/* Cursor effect */}
-      <div 
+      <div
         className="cursor-trail"
         style={{
           left: `${30 + progress * 40}%`,
@@ -162,11 +162,11 @@ const LandingAnimation = () => {
 
       {/* FREYA branding */}
       <div className="branding" style={{ opacity: isComplete ? 1 : 0 }}>
-       
-        
+
+
         {/* Get Started Button */}
         {showButton && (
-          <button 
+          <button
             className="cta-button"
             onClick={() => navigate('/home')}
           >
@@ -178,7 +178,7 @@ const LandingAnimation = () => {
 
       {/* Progress indicator */}
       <div className="progress-bar">
-        <div 
+        <div
           className="progress-fill"
           style={{ width: `${progress * 100}%` }}
         ></div>
