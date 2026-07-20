@@ -6,7 +6,7 @@ import './LoadingAnimation.css';
 const LoadingAnimation = () => {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
-  
+
   const [imagesLoaded, setImagesLoaded] = useState(false);
   const [loadedCount, setLoadedCount] = useState(0);
   const [frameState, setFrameState] = useState({ frame: 1, nextFrame: 2, opacity: 0, showButton: false });
@@ -17,8 +17,8 @@ const LoadingAnimation = () => {
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
   const navigate = useNavigate();
 
-  const totalFrames = 240;
-  const frameStep = 3; // Load every 3rd frame to reduce download count to 80 frames
+  const totalFrames = 300;
+  const frameStep = 1; // Load every 3rd frame to reduce download count to 80 frames
   const preloadCount = 10; // Preload first 10 frames (mapped to step) for immediate display
   const frameObj = useRef({ val: 1 });
   const imageCache = useRef(new Map());
@@ -274,7 +274,7 @@ const LoadingAnimation = () => {
           const r = targetWidth / iw;
           const destWidth = iw * r;
           const destHeight = ih * r;
-          
+
           const destX = (dimensions.width - destWidth) / 2;
           const destY = (dimensions.height - destHeight) / 2;
 
@@ -508,7 +508,7 @@ const LoadingAnimation = () => {
         <div className={`button-overlay ${frameState.showButton ? 'show' : ''}`}>
           <div className="button-wrapper">
             <button
-              className="cta-button"
+              className="cta-button mt-76"
               onClick={() => navigate('/home')}
             >
               Start Coding

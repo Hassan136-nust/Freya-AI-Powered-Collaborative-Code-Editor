@@ -10,8 +10,8 @@ const LandingAnimation = () => {
   const [showButton, setShowButton] = useState(false);
   const navigate = useNavigate();
 
-  const totalFrames = 150;
-  const animationDuration = 4500; // 4.5 seconds
+  const totalFrames = 300;
+  const animationDuration = 5000; // 4.5 seconds
 
   useEffect(() => {
     // Preload all images
